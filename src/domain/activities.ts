@@ -48,6 +48,10 @@ export function todayInParis(reference = new Date()): string {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+export function isPastOneOffEvent(activity: Activity, today = todayInParis()): boolean {
+  return activity.kind === "one_off" && (activity.end_date ?? activity.start_date) < today;
+}
+
 /** Organiser cancellations and postponements never enter the attendance denominator. */
 export function computeActivityStats(
   activity: Activity,

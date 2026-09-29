@@ -10,7 +10,7 @@ import { activityTools, activitySessionTools, activityStatisticsTools, activityS
 import { toolErrorResult, toolResult } from "./tools/result.js";
 
 export const SERVER_NAME = "novaformation";
-export const SERVER_VERSION = "1.1.1";
+export const SERVER_VERSION = "1.2.0";
 
 export const ALL_TOOLS: McpTool[] = [
   ...overviewTools,
@@ -35,6 +35,8 @@ Reperes :
 - Les scores d'exercice sont sur l'echelle de l'exercice (score_max : 5, 10, 20, 100...).
 - Les activites sont independantes des programmes et exercices. Une seance annulee par l'organisateur
   ne penalise pas la presence ; les seances deja realisees et exceptions sont preservees lors d'un changement de serie.
+- Les evenements ponctuels ont des journees propres (journee entiere, plage horaire OU duree).
+  Une journee entiere occupe le calendrier sans etre comptee comme 24 heures de pratique.
 - Toute suppression est definitive et exige confirm=true : ne supprimer que sur demande explicite. Pour ranger sans perdre,
   archiver (update_program status=archived, update_exercise archived=true).
 - Les sections Today et Habits sont masquees dans l'app : elles ne sont pas exposees ici.

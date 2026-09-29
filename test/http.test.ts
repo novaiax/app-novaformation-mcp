@@ -107,7 +107,7 @@ describe("tool catalogue", () => {
   it("exposes the complete activity lifecycle in the MCP catalogue", () => {
     const names = new Set(ALL_TOOLS.map((tool) => tool.name));
     for (const name of ["create_activity", "update_activity", "archive_activity",
-      "set_activity_recurrence", "add_activity_session", "update_activity_session",
+      "set_activity_recurrence", "set_one_off_event_days", "add_activity_session", "update_activity_session",
       "delete_activity_sessions", "set_activity_session_status", "list_activities",
       "list_activity_sessions", "get_activity_statistics", "search_activities",
       "set_activity_links", "set_activity_session_skills", "create_activity_skill",

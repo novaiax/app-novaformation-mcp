@@ -316,7 +316,8 @@ export interface Database {
         Row: {
           id: string; activity_id: string; user_id: string; recurrence_rule_id: string | null;
           source: "manual" | "generated"; occurrence_date: string | null;
-          session_date: string; start_time: string | null; planned_minutes: number;
+          session_date: string; start_time: string | null; end_time: string | null;
+          all_day: boolean; event_occurrence_date: string | null; planned_minutes: number;
           actual_minutes: number | null; status: ActivitySessionStatus;
           feedback_score: number | null; notes: string; comment: string;
           url: string | null; attachment_path: string | null; attachment_name: string | null;
@@ -480,6 +481,13 @@ export interface Database {
     Views: Record<string, never>;
     Functions: {
       nf_refresh_activity_occurrences: { Args: { p_activity_id: string; p_user_id?: string | null }; Returns: number };
+      nf_set_one_off_event_days: {
+        Args: { p_activity_id: string; p_days: {
+          date: string; mode: "all_day" | "time_range" | "duration";
+          start_time?: string; end_time?: string; duration_minutes?: number;
+        }[]; p_user_id?: string | null };
+        Returns: number;
+      };
       nf_set_activity_recurrence: {
         Args: {
           p_activity_id: string; p_scope: "all" | "following"; p_from_date: string;

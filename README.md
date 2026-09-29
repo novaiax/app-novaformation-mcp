@@ -21,7 +21,7 @@ aux données de l'application, avec les mêmes règles que l'interface.
 | Programmes | `list_programs`, `get_program`, `create_program` (structure complète en un appel), `update_program`, `delete_program`, `add_weeks`, `update_week`, `delete_week`, `add_modules`, `update_module`, `delete_module`, `add_module_items`, `update_module_item`, `set_module_items_completed`, `reorder_module_items`, `delete_module_items` |
 | Livres | `list_books`, `get_book`, `create_book`, `update_book`, `update_book_progress`, `delete_book` |
 | Exercices | `list_exercises`, `get_exercise`, `create_exercise`, `update_exercise`, `list_exercise_sessions`, `log_exercise_session`, `update_exercise_session`, `delete_exercise_session` |
-| Activités | `list_activities`, `get_activity`, `search_activities`, `create_activity`, `update_activity`, `archive_activity`, `duplicate_activity`, `reorder_activities`, `delete_activity`, `set_activity_recurrence`, `set_activity_links`, `restore_activity_occurrence` |
+| Activités | `list_activities`, `get_activity`, `search_activities`, `create_activity`, `update_activity`, `archive_activity`, `duplicate_activity`, `reorder_activities`, `delete_activity`, `set_activity_recurrence`, `set_one_off_event_days`, `set_activity_links`, `restore_activity_occurrence` |
 | Séances d’activité | `list_activity_sessions`, `add_activity_session`, `update_activity_session`, `update_activity_session_schedule`, `set_activity_session_status`, `set_activity_sessions_status`, `move_activity_sessions`, `duplicate_activity_sessions`, `delete_activity_sessions`, `reorder_activity_sessions`, `set_activity_session_skills` |
 | Compétences et fichiers | `list_activity_skills`, `create_activity_skill`, `update_activity_skill`, `duplicate_activity_skill`, `reorder_activity_skills`, `delete_activity_skill`, `read_activity_attachment`, `upload_activity_attachment`, `remove_activity_attachment` |
 | Statistiques d’activité | `get_activity_statistics` (filtres par activité, catégorie, compétence, programme et période) |
@@ -76,6 +76,10 @@ conserver des statistiques historiques cohérentes si les liens de l’activité
 La migration `0009_activity_history.sql` génère aussi les occurrences passées
 depuis la date de début d’une activité récurrente. Elles peuvent ensuite être
 marquées réalisées par le MCP, y compris en lot.
+La migration `0010_one_off_events.sql` ajoute les événements ponctuels multi-jours :
+`set_one_off_event_days` règle séparément chaque date en journée entière,
+plage horaire ou durée. Les journées entières occupent le calendrier sans
+être comptées comme 24 heures de pratique.
 
 ## Développement
 

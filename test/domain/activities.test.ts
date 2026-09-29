@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityPeriodSeries, activityTimeBreakdowns, computeActivityStats,
+import { activityPeriodSeries, activityTimeBreakdowns, computeActivityStats, isPastOneOffEvent,
   type ActivityData } from "../../src/domain/activities.js";
 import type { Tables } from "../../src/domain/database.js";
 
@@ -14,10 +14,25 @@ const session = (id: string, status: Tables<"activity_sessions">["status"], date
 }) as Tables<"activity_sessions">;
 
 describe("activity statistics", () => {
+  it("keeps a one-off event upcoming through its last day", () => {
+    const event = { ...activity, kind: "one_off" as const, start_date: "2026-10-23", end_date: "2026-10-25" };
+    expect(isPastOneOffEvent(event, "2026-10-25")).toBe(false);
+    expect(isPastOneOffEvent(event, "2026-10-26")).toBe(true);
+  });
+
   it("shows past planned sessions for validation without counting them as missed", () => {
     const rows = [session("past", "planned", "2026-09-01"), session("future", "planned", "2026-10-01")];
     expect(computeActivityStats(activity, rows, "2026-09-29")).toMatchObject({
       needsReview: 1, remaining: 1, done: 0, missed: 0, attendanceRate: null,
+    });
+  });
+
+  it("counts an all-day event as a day without inventing 24 planned hours", () => {
+    const event = { ...activity, id: "event", kind: "one_off" as const };
+    const day = { ...session("day", "planned", "2026-10-23"), activity_id: "event",
+      all_day: true, planned_minutes: 0 };
+    expect(computeActivityStats(event, [day], "2026-10-20")).toMatchObject({
+      scheduled: 1, remaining: 1, plannedMinutes: 0,
     });
   });
 

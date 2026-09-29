@@ -4,7 +4,7 @@ import { ownedActivity, ownedActivitySession, ownedCategory, ownedProgram, owned
 import { badRequest } from "./result.js";
 import type { ToolContext } from "../context.js";
 import type { Tables } from "../domain/database.js";
-import { activityPeriodSeries, activityTimeBreakdowns, computeActivityStats, todayInParis,
+import { activityPeriodSeries, activityTimeBreakdowns, computeActivityStats, isPastOneOffEvent, todayInParis,
   type ActivityData } from "../domain/activities.js";
 
 const status = z.enum(["planned", "active", "paused", "completed", "archived"]);
@@ -24,6 +24,13 @@ const recurrence = z.object({
   start_time: time.nullable().default(null),
   planned_minutes: minutes.nullable().default(null),
   anchor_date: dateKey.nullable().default(null),
+});
+const eventDay = z.object({
+  date: dateKey,
+  mode: z.enum(["all_day", "time_range", "duration"]),
+  start_time: time.optional(),
+  end_time: time.optional(),
+  duration_minutes: minutes.optional(),
 });
 
 const activityFields = {
@@ -49,7 +56,9 @@ const sessionFields = {
   activity_id: id("Activity"),
   session_date: dateKey,
   start_time: time.nullable().default(null),
-  planned_minutes: minutes.default(0),
+  end_time: time.nullable().default(null),
+  all_day: z.boolean().default(false),
+  planned_minutes: minutes.optional(),
   actual_minutes: minutes.nullable().default(null),
   status: sessionStatus.default("planned"),
   feedback_score: z.number().int().min(1).max(10).nullable().default(null),
@@ -57,6 +66,47 @@ const sessionFields = {
   comment: z.string().max(20000).default(""),
   url: url.nullable().default(null),
 };
+
+function defaultEventDays(start: string, end: string) {
+  if (end < start) badRequest("end_date precedes start_date");
+  const first = Date.parse(`${start}T00:00:00Z`);
+  const last = Date.parse(`${end}T00:00:00Z`);
+  if (Number.isNaN(first) || Number.isNaN(last)) badRequest("Invalid event dates");
+  const days: z.infer<typeof eventDay>[] = [];
+  for (let timestamp = first; timestamp <= last; timestamp += 86_400_000) {
+    if (days.length >= 120) badRequest("Event cannot exceed 120 days");
+    days.push({ date: new Date(timestamp).toISOString().slice(0, 10), mode: "all_day" });
+  }
+  return days;
+}
+
+function validateEventDays(days: z.infer<typeof eventDay>[], start: string, end: string | null) {
+  const seen = new Set<string>();
+  for (const day of days) {
+    if (day.date < start || (end && day.date > end) || seen.has(day.date))
+      badRequest("Event day is outside range or duplicated");
+    seen.add(day.date);
+    if (day.mode === "time_range" && (!day.start_time || !day.end_time || day.end_time <= day.start_time))
+      badRequest(`Invalid time range on ${day.date}`);
+    if (day.mode === "duration" && (!day.duration_minutes || day.duration_minutes < 1))
+      badRequest(`Invalid duration on ${day.date}`);
+  }
+}
+
+function normalizeTiming(start: string | null, end: string | null,
+  allDay: boolean, planned?: number | null) {
+  if (allDay) return { start_time: null, end_time: null, all_day: true, planned_minutes: 0 };
+  if (!end) return { start_time: start, end_time: null, all_day: false, planned_minutes: planned ?? 0 };
+  if (!start) badRequest("start_time is required with end_time");
+  const seconds = (value: string) => {
+    const [hour, minute, second = 0] = value.split(":").map(Number);
+    return hour * 3600 + minute * 60 + second;
+  };
+  const difference = seconds(end) - seconds(start);
+  if (difference <= 0) badRequest("end_time must be after start_time");
+  return { start_time: start, end_time: end, all_day: false,
+    planned_minutes: Math.ceil(difference / 60) };
+}
 
 async function allSessions(ctx: ToolContext) {
   const sessions: Tables<"activity_sessions">[] = [];
@@ -113,6 +163,7 @@ function presentActivity(activity: Tables<"activities">, data: ActivityData) {
   const stats = computeActivityStats(activity, data.sessions);
   return {
     ...activity,
+    event_phase: activity.kind !== "one_off" ? null : isPastOneOffEvent(activity) ? "past" : "upcoming",
     category: data.categories.find((row) => row.id === activity.category_id)?.name ?? null,
     skills: data.activitySkills.filter((row) => row.activity_id === activity.id)
       .map((row) => data.skills.find((skill) => skill.id === row.skill_id)).filter(Boolean),
@@ -145,6 +196,14 @@ async function setRecurrence(ctx: ToolContext, activityId: string,
     p_interval_days: value.interval_days, p_start_time: value.start_time,
     p_planned_minutes: value.planned_minutes, p_anchor_date: value.anchor_date,
     p_user_id: ctx.userId,
+  });
+  throwIf(error);
+  return data;
+}
+
+async function setOneOffDays(ctx: ToolContext, activityId: string, days: z.infer<typeof eventDay>[]) {
+  const { data, error } = await ctx.supabase.rpc("nf_set_one_off_event_days", {
+    p_activity_id: activityId, p_days: days, p_user_id: ctx.userId,
   });
   throwIf(error);
   return data;
@@ -198,14 +257,20 @@ export const activityTools = [
   }),
   defineTool({
     name: "create_activity", title: "Create activity", kind: "write",
-    description: "Crée une activité libre, ponctuelle ou récurrente. La série récurrente crée aussi les séances passées depuis start_date, à valider ensuite.",
+    description: "Crée une routine, activité libre ou événement ponctuel. Un événement couvre tous les jours entre start_date et end_date, avec horaires propres à chaque jour.",
     input: { ...activityFields, recurrence: recurrence.optional(),
       one_off_dates: z.array(dateKey).max(200).default([]),
+      event_days: z.array(eventDay).min(1).max(120).optional(),
       skill_ids: z.array(id("Skill")).default([]), program_ids: z.array(id("Program")).default([]) },
-    handler: async ({ recurrence: rule, one_off_dates, skill_ids, program_ids, ...fields }, ctx) => {
+    handler: async ({ recurrence: rule, one_off_dates, event_days, skill_ids, program_ids, ...fields }, ctx) => {
       if (fields.end_date && fields.end_date < fields.start_date) badRequest("end_date precedes start_date");
       checkGoal(fields.goal_type, fields.goal_target);
       if (fields.kind === "recurring" && !rule) badRequest("recurrence is required for a recurring activity");
+      const requestedEventDays = fields.kind === "one_off"
+        ? event_days ?? (one_off_dates.length
+          ? [...new Set(one_off_dates)].map((date) => ({ date, mode: "all_day" as const }))
+          : defaultEventDays(fields.start_date, fields.end_date ?? fields.start_date)) : null;
+      if (requestedEventDays) validateEventDays(requestedEventDays, fields.start_date, fields.end_date);
       if (fields.category_id) await ownedCategory(ctx, fields.category_id);
       for (const skillId of skill_ids) await ownedSkill(ctx, skillId);
       for (const programId of program_ids) await ownedProgram(ctx, programId);
@@ -218,19 +283,12 @@ export const activityTools = [
       try {
         await setLinks(ctx, data!.id, skill_ids, program_ids);
         if (fields.kind === "recurring" && rule) await setRecurrence(ctx, data!.id, rule, "all", fields.start_date);
-        if (fields.kind === "one_off" && one_off_dates.length) {
-          const { error: datesError } = await ctx.supabase.from("activity_sessions").insert(
-            [...new Set(one_off_dates)].sort().map((date) => ({
-              activity_id: data!.id, user_id: ctx.userId, session_date: date,
-              start_time: fields.usual_time, planned_minutes: fields.planned_minutes,
-            })));
-          throwIf(datesError);
-        }
+        if (requestedEventDays) await setOneOffDays(ctx, data!.id, requestedEventDays);
       } catch (cause) {
         await ctx.supabase.from("activities").delete().eq("id", data!.id).eq("user_id", ctx.userId);
         throw cause;
       }
-      return { created: data, sessions_generated: fields.kind === "recurring" || one_off_dates.length > 0 };
+      return { created: data, sessions_generated: fields.kind !== "free" };
     },
   }),
   defineTool({
@@ -246,14 +304,22 @@ export const activityTools = [
       url: url.nullable().optional(), goal_type: goalType.nullable().optional(),
       goal_target: z.number().positive().max(100000).nullable().optional(),
       recurrence: recurrence.optional(), recurrence_scope: z.enum(["all", "following"]).default("all"),
-      from_date: dateKey.optional(), skill_ids: z.array(id("Skill")).optional(),
+      from_date: dateKey.optional(), event_days: z.array(eventDay).min(1).max(120).optional(),
+      skill_ids: z.array(id("Skill")).optional(),
       program_ids: z.array(id("Program")).optional() },
-    handler: async ({ activity_id, recurrence: rule, recurrence_scope, from_date,
+    handler: async ({ activity_id, recurrence: rule, recurrence_scope, from_date, event_days,
       skill_ids, program_ids, ...changes }, ctx) => {
       const current = await ownedActivity(ctx, activity_id);
       const nextStart = changes.start_date ?? current.start_date;
       const nextEnd = changes.end_date === undefined ? current.end_date : changes.end_date;
+      const nextKind = changes.kind ?? current.kind;
       if (nextEnd && nextEnd < nextStart) badRequest("end_date precedes start_date");
+      if (nextKind === "one_off" && current.kind === "one_off" &&
+        (changes.start_date !== undefined || changes.end_date !== undefined) && !event_days)
+        badRequest("event_days is required when changing a one-off event date range");
+      if (nextKind === "recurring" && current.kind !== "recurring" && !rule)
+        badRequest("recurrence is required when changing to recurring");
+      if (event_days) validateEventDays(event_days, nextStart, nextEnd);
       checkGoal(changes.goal_type === undefined ? current.goal_type : changes.goal_type,
         changes.goal_target === undefined ? current.goal_target : changes.goal_target);
       if (changes.category_id) await ownedCategory(ctx, changes.category_id);
@@ -269,7 +335,6 @@ export const activityTools = [
           .eq("id", activity_id).eq("user_id", ctx.userId);
         throwIf(error);
       }
-      const nextKind = changes.kind ?? current.kind;
       if (current.kind === "recurring" && nextKind !== "recurring") {
         const { error } = await ctx.supabase.rpc("nf_clear_activity_recurrence", {
           p_activity_id: activity_id, p_user_id: ctx.userId,
@@ -286,6 +351,8 @@ export const activityTools = [
           throwIf(error);
         }
       }
+      if (nextKind === "one_off" && (event_days || current.kind !== "one_off"))
+        await setOneOffDays(ctx, activity_id, event_days ?? defaultEventDays(nextStart, nextEnd ?? nextStart));
       if (skill_ids || program_ids) {
         const [skills, programs] = await Promise.all([
           ctx.supabase.from("activity_skill_links").select("skill_id").eq("activity_id", activity_id).eq("user_id", ctx.userId),
@@ -372,6 +439,18 @@ export const activityTools = [
     },
   }),
   defineTool({
+    name: "set_one_off_event_days", title: "Set one-off event days", kind: "write",
+    description: "Définit chaque journée d’un événement ponctuel : journée entière, plage horaire OU durée. Les journées réalisées et exceptions restent intactes.",
+    input: { activity_id: id("Activity"), days: z.array(eventDay).min(1).max(120) },
+    handler: async ({ activity_id, days }, ctx) => {
+      const activity = await ownedActivity(ctx, activity_id);
+      if (activity.kind !== "one_off") badRequest("Activity is not a one-off event");
+      validateEventDays(days, activity.start_date, activity.end_date);
+      const inserted = await setOneOffDays(ctx, activity_id, days);
+      return { activity_id, days: days.length, inserted };
+    },
+  }),
+  defineTool({
     name: "set_activity_links", title: "Set activity links", kind: "write",
     description: "Remplace atomiquement les compétences et programmes liés à l’activité.",
     input: { activity_id: id("Activity"), skill_ids: z.array(id("Skill")), program_ids: z.array(id("Program")) },
@@ -449,12 +528,15 @@ export const activitySessionTools = [
     input: { ...sessionFields, skill_ids: z.array(id("Skill")).default([]) },
     handler: async ({ skill_ids, ...fields }, ctx) => {
       await ownedActivity(ctx, fields.activity_id);
+      if (fields.end_time && fields.planned_minutes !== undefined)
+        badRequest("Use end_time OR planned_minutes, not both");
+      const timing = normalizeTiming(fields.start_time, fields.end_time, fields.all_day, fields.planned_minutes);
       const { data: last } = await ctx.supabase.from("activity_sessions").select("sort_order")
         .eq("activity_id", fields.activity_id).eq("session_date", fields.session_date)
         .order("sort_order", { ascending: false }).limit(1).maybeSingle();
       const { data, error } = await ctx.supabase.from("activity_sessions")
-        .insert({ ...fields, user_id: ctx.userId, source: "manual",
-          actual_minutes: fields.status === "done" ? (fields.actual_minutes ?? fields.planned_minutes) : null,
+        .insert({ ...fields, ...timing, user_id: ctx.userId, source: "manual",
+          actual_minutes: fields.status === "done" ? (fields.actual_minutes ?? timing.planned_minutes) : null,
           sort_order: (last?.sort_order ?? -1) + 1 })
         .select().single();
       throwIf(error);
@@ -475,6 +557,7 @@ export const activitySessionTools = [
     description: "Modifie une occurrence seulement. Une date ou une activité différente devient une exception persistante.",
     input: { session_id: id("Activity session"), activity_id: id("Activity").optional(),
       session_date: dateKey.optional(), start_time: time.nullable().optional(),
+      end_time: time.nullable().optional(), all_day: z.boolean().optional(),
       planned_minutes: minutes.optional(), actual_minutes: minutes.nullable().optional(),
       status: sessionStatus.optional(), feedback_score: z.number().int().min(1).max(10).nullable().optional(),
       notes: z.string().max(20000).optional(), comment: z.string().max(20000).optional(),
@@ -483,7 +566,15 @@ export const activitySessionTools = [
       const original = await ownedActivitySession(ctx, session_id);
       const targetActivity = changes.activity_id ?? original.activity_id;
       const targetDate = changes.session_date ?? original.session_date;
-      const targetTime = changes.start_time === undefined ? original.start_time : changes.start_time;
+      if (changes.end_time && changes.planned_minutes !== undefined)
+        badRequest("Use end_time OR planned_minutes, not both");
+      const timing = normalizeTiming(
+        changes.start_time === undefined ? original.start_time : changes.start_time,
+        changes.end_time === undefined ? original.end_time : changes.end_time,
+        changes.all_day ?? original.all_day,
+        changes.planned_minutes === undefined ? original.planned_minutes : changes.planned_minutes,
+      );
+      const targetTime = timing.start_time;
       if (targetActivity !== original.activity_id || targetDate !== original.session_date ||
         targetTime !== original.start_time) {
         await ownedActivity(ctx, targetActivity);
@@ -493,11 +584,11 @@ export const activitySessionTools = [
         });
         throwIf(error);
       }
-      const update = definedOnly({ ...changes,
+      const update = definedOnly({ ...changes, ...timing,
         actual_minutes: (changes.status ?? original.status) === "done"
-          ? (changes.actual_minutes === undefined ? (original.actual_minutes ?? changes.planned_minutes ?? original.planned_minutes) : changes.actual_minutes)
+          ? (changes.actual_minutes === undefined ? (original.actual_minutes ?? timing.planned_minutes) : changes.actual_minutes)
           : null,
-        is_exception: original.source === "generated" || original.is_exception,
+        is_exception: original.source === "generated" || Boolean(original.event_occurrence_date) || original.is_exception,
       });
       const { error } = await ctx.supabase.from("activity_sessions").update(update)
         .eq("id", session_id).eq("user_id", ctx.userId);
@@ -559,7 +650,7 @@ export const activitySessionTools = [
       const { error } = await ctx.supabase.from("activity_sessions")
         .update({ status: nextStatus,
           actual_minutes: nextStatus === "done" ? (actual_minutes ?? session.actual_minutes ?? session.planned_minutes) : null,
-          is_exception: session.source === "generated" || session.is_exception,
+          is_exception: session.source === "generated" || Boolean(session.event_occurrence_date) || session.is_exception,
         }).eq("id", session_id).eq("user_id", ctx.userId);
       throwIf(error);
       return { updated: await ownedActivitySession(ctx, session_id) };
@@ -681,7 +772,8 @@ export const activitySessionTools = [
         .upload(path, bytes, { contentType: mime_type, upsert: false });
       throwIf(uploadError);
       const { error } = await ctx.supabase.from("activity_sessions")
-        .update({ attachment_path: path, attachment_name: name })
+        .update({ attachment_path: path, attachment_name: name,
+          is_exception: session.is_exception || Boolean(session.event_occurrence_date) })
         .eq("id", session_id).eq("user_id", ctx.userId);
       if (error) {
         await ctx.supabase.storage.from("activity-attachments").remove([path]);
