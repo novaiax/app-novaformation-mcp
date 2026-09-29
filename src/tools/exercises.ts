@@ -17,7 +17,7 @@ import { isMissingTableError } from "../services/errors.js";
 import { recordGoalAchievements } from "../services/exercise-achievements.js";
 import { replaceExerciseGoals } from "../services/exercise-goals-sync.js";
 import { getSettings, weekStartsOn } from "../services/settings.js";
-import { awardXp, revokeXp } from "../services/xp-award.js";
+import { awardXp } from "../services/xp-award.js";
 
 const GOAL_TYPES = ["sessions", "minutes", "score"] as const satisfies readonly ExerciseGoalType[];
 const GOAL_PERIODS = ["total", "week", "month"] as const satisfies readonly ExerciseGoalPeriod[];
@@ -433,9 +433,10 @@ export const exerciseTools = [
     input: { session_id: id("Exercise session"), confirm },
     handler: async ({ session_id }, ctx) => {
       const log = await ownedExerciseLog(ctx, session_id);
-      await revokeXp(ctx.supabase, ctx.userId, "exercise", session_id);
-      const { error } = await ctx.supabase.from("exercise_logs").delete().eq("id", session_id).eq("user_id", ctx.userId);
+      const { data, error } = await ctx.supabase.from("exercise_logs").delete()
+        .eq("id", session_id).eq("user_id", ctx.userId).select("id").maybeSingle();
       throwIf(error);
+      if (!data) badRequest("Exercise session not found");
       return { deleted: { id: log.id, completed_at: log.completed_at, duration_minutes: log.duration_minutes } };
     },
   }),

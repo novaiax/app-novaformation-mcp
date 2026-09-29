@@ -80,6 +80,9 @@ La migration `0010_one_off_events.sql` ajoute les événements ponctuels multi-j
 `set_one_off_event_days` règle séparément chaque date en journée entière,
 plage horaire ou durée. Les journées entières occupent le calendrier sans
 être comptées comme 24 heures de pratique.
+La migration `0011_exercise_session_cleanup.sql` supprime les XP liés à une
+séance d’exercice dans la même transaction que sa suppression. Le jalon déjà
+atteint reste historique et la progression courante est recalculée.
 
 ## Développement
 

@@ -1,6 +1,6 @@
 {
   "name": "novaformation-mcp",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Remote MCP server for NovaFormation: read and write programs, books, exercises, objectives, XP and statistics.",
   "type": "module",
