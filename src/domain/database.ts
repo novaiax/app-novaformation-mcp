@@ -291,7 +291,8 @@ export interface Database {
           planned_minutes: number; usual_time: string | null; place: string;
           organizer: string; url: string | null; goal_type: ActivityGoalType | null;
           goal_target: number | null; sort_order: number;
-          schedule_refreshed_until: string | null; created_at: string; updated_at: string;
+          schedule_refreshed_until: string | null; past_schedule_generated: boolean;
+          created_at: string; updated_at: string;
         };
         Insert: Partial<Database["public"]["Tables"]["activities"]["Row"]> & { user_id: string; name: string };
         Update: Partial<Database["public"]["Tables"]["activities"]["Row"]>;

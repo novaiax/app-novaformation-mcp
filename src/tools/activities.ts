@@ -76,9 +76,11 @@ async function loadActivityData(ctx: ToolContext): Promise<ActivityData> {
   throwIf(activities.error);
   const today = todayInParis();
   for (const activity of activities.data ?? []) {
-    if (activity.kind !== "recurring" || ["paused", "completed", "archived"].includes(activity.status) ||
-      (activity.end_date && activity.end_date < today) ||
-      (activity.schedule_refreshed_until && activity.schedule_refreshed_until >= today)) continue;
+    if (activity.kind !== "recurring") continue;
+    const needsFuture = !["paused", "completed", "archived"].includes(activity.status) &&
+      (!activity.end_date || activity.end_date >= today) &&
+      (!activity.schedule_refreshed_until || activity.schedule_refreshed_until < today);
+    if (activity.past_schedule_generated && !needsFuture) continue;
     const { error } = await ctx.supabase.rpc("nf_refresh_activity_occurrences", {
       p_activity_id: activity.id, p_user_id: ctx.userId,
     });
@@ -196,7 +198,7 @@ export const activityTools = [
   }),
   defineTool({
     name: "create_activity", title: "Create activity", kind: "write",
-    description: "Crée une activité libre, ponctuelle ou récurrente. Les dates ponctuelles et la série récurrente créent leurs séances.",
+    description: "Crée une activité libre, ponctuelle ou récurrente. La série récurrente crée aussi les séances passées depuis start_date, à valider ensuite.",
     input: { ...activityFields, recurrence: recurrence.optional(),
       one_off_dates: z.array(dateKey).max(200).default([]),
       skill_ids: z.array(id("Skill")).default([]), program_ids: z.array(id("Program")).default([]) },
@@ -257,7 +259,11 @@ export const activityTools = [
       if (changes.category_id) await ownedCategory(ctx, changes.category_id);
       if (skill_ids) for (const skillId of skill_ids) await ownedSkill(ctx, skillId);
       if (program_ids) for (const programId of program_ids) await ownedProgram(ctx, programId);
-      const update = definedOnly(changes);
+      const update = {
+        ...definedOnly(changes),
+        ...(changes.start_date && changes.start_date < current.start_date
+          ? { past_schedule_generated: false } : {}),
+      };
       if (Object.keys(update).length) {
         const { error } = await ctx.supabase.from("activities").update(update)
           .eq("id", activity_id).eq("user_id", ctx.userId);

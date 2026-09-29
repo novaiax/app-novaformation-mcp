@@ -14,6 +14,13 @@ const session = (id: string, status: Tables<"activity_sessions">["status"], date
 }) as Tables<"activity_sessions">;
 
 describe("activity statistics", () => {
+  it("shows past planned sessions for validation without counting them as missed", () => {
+    const rows = [session("past", "planned", "2026-09-01"), session("future", "planned", "2026-10-01")];
+    expect(computeActivityStats(activity, rows, "2026-09-29")).toMatchObject({
+      needsReview: 1, remaining: 1, done: 0, missed: 0, attendanceRate: null,
+    });
+  });
+
   it("excludes organizer cancellations and postponed sessions from attendance", () => {
     const rows = [
       session("1", "done", "2026-09-01", 100),

@@ -73,6 +73,9 @@ Le taux de présence exclut les annulations par l’organisateur et les reports.
 Les pièces jointes MCP sont échangées en base64, sans URL avec jeton.
 Les compétences travaillées sont figées sur chaque séance réalisée pour
 conserver des statistiques historiques cohérentes si les liens de l’activité changent.
+La migration `0009_activity_history.sql` génère aussi les occurrences passées
+depuis la date de début d’une activité récurrente. Elles peuvent ensuite être
+marquées réalisées par le MCP, y compris en lot.
 
 ## Développement
 

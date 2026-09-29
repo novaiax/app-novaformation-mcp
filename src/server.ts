@@ -10,7 +10,7 @@ import { activityTools, activitySessionTools, activityStatisticsTools, activityS
 import { toolErrorResult, toolResult } from "./tools/result.js";
 
 export const SERVER_NAME = "novaformation";
-export const SERVER_VERSION = "1.1.0";
+export const SERVER_VERSION = "1.1.1";
 
 export const ALL_TOOLS: McpTool[] = [
   ...overviewTools,
