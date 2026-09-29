@@ -7,6 +7,7 @@ import { bucketByDay, bucketByWeek } from "../domain/statistics.js";
 import { getLevelInfo } from "../domain/xp.js";
 import { formatDuration, toDateKey } from "../domain/date.js";
 import { groupExerciseStats } from "../domain/exercises.js";
+import { todayInParis } from "../domain/activities.js";
 import type { XpSource } from "../domain/database.js";
 
 const XP_SOURCES = ["task", "habit", "exercise", "book", "manual"] as const satisfies readonly XpSource[];
@@ -25,7 +26,8 @@ export const overviewTools = [
     input: {},
     handler: async (_args, { supabase, userId }) => {
       const now = new Date();
-      const [settings, profile, programs, xpAll, tasks, books, exercises, logs, achievements] = await Promise.all([
+      const [settings, profile, programs, xpAll, tasks, books, exercises, logs, achievements,
+        activities, activitySessions] = await Promise.all([
         getSettings(supabase, userId),
         supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle(),
         supabase
@@ -49,8 +51,11 @@ export const overviewTools = [
           .eq("user_id", userId)
           .order("completed_at", { ascending: false }),
         supabase.from("exercise_goal_achievements").select("id").eq("user_id", userId),
+        supabase.from("activities").select("id,name,status").eq("user_id", userId),
+        supabase.from("activity_sessions").select("activity_id,session_date,status,actual_minutes")
+          .eq("user_id", userId),
       ]);
-      for (const result of [profile, programs, xpAll, tasks, books, exercises, logs]) throwIf(result.error);
+      for (const result of [profile, programs, xpAll, tasks, books, exercises, logs, activities, activitySessions]) throwIf(result.error);
 
       const totalXp = (xpAll.data ?? []).reduce((sum, e) => sum + e.amount, 0);
       const level = getLevelInfo(totalXp, { base: settings.level_base_xp, growth: Number(settings.level_growth) });
@@ -131,6 +136,20 @@ export const overviewTools = [
               score_max: exercise?.score_max ?? null,
             };
           }),
+        },
+        activities: {
+          active_count: (activities.data ?? []).filter((activity) => activity.status === "active").length,
+          total_sessions_done: (activitySessions.data ?? []).filter((session) => session.status === "done").length,
+          total_hours_done: round1((activitySessions.data ?? []).filter((session) => session.status === "done")
+            .reduce((sum, session) => sum + (session.actual_minutes ?? 0), 0) / 60),
+          upcoming: (activitySessions.data ?? []).filter((session) =>
+            session.status === "planned" && session.session_date >= todayInParis())
+            .sort((a, b) => a.session_date.localeCompare(b.session_date))
+            .slice(0, 10).map((session) => ({
+              activity_id: session.activity_id,
+              activity: (activities.data ?? []).find((activity) => activity.id === session.activity_id)?.name ?? null,
+              date: session.session_date,
+            })),
         },
       };
     },
@@ -277,7 +296,7 @@ export const overviewTools = [
       const matches = (...values: (string | null | undefined)[]) =>
         values.some((value) => value?.toLocaleLowerCase("fr").includes(needle));
 
-      const [programs, books, exercises] = await Promise.all([
+      const [programs, books, exercises, activities] = await Promise.all([
         supabase
           .from("programs")
           .select(
@@ -286,8 +305,10 @@ export const overviewTools = [
           .eq("user_id", userId),
         supabase.from("books").select("id, title, author, notes, status").eq("user_id", userId),
         supabase.from("exercises").select("id, title, description, archived").eq("user_id", userId),
+        supabase.from("activities").select("id,name,description,status,kind,place,organizer")
+          .eq("user_id", userId),
       ]);
-      for (const result of [programs, books, exercises]) throwIf(result.error);
+      for (const result of [programs, books, exercises, activities]) throwIf(result.error);
 
       type Item = { id: string; type: string; title: string; description: string; is_completed: boolean };
       type Program = {
@@ -338,6 +359,9 @@ export const overviewTools = [
         exercises: (exercises.data ?? [])
           .filter((e) => matches(e.title, e.description))
           .map((e) => ({ id: e.id, title: e.title, archived: e.archived })),
+        activities: (activities.data ?? [])
+          .filter((activity) => matches(activity.name, activity.description, activity.place, activity.organizer))
+          .map((activity) => ({ id: activity.id, name: activity.name, status: activity.status, kind: activity.kind })),
       };
     },
   }),

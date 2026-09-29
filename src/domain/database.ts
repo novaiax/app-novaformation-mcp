@@ -15,6 +15,11 @@ export type XpSource = "task" | "habit" | "exercise" | "book" | "manual";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type ExerciseGoalType = "sessions" | "minutes" | "score";
 export type ExerciseGoalPeriod = "total" | "week" | "month";
+export type ActivityStatus = "planned" | "active" | "paused" | "completed" | "archived";
+export type ActivityKind = "recurring" | "one_off" | "free";
+export type ActivityGoalType = "sessions" | "hours" | "attendance";
+export type ActivitySessionStatus = "planned" | "done" | "missed" | "cancelled_self" | "cancelled_organizer" | "postponed";
+export type ActivityFrequency = "weekly" | "every_n_days";
 
 export interface HabitRecurrenceConfig {
   days_of_week?: number[]; // 0 (Sunday) - 6 (Saturday)
@@ -269,6 +274,84 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["exercise_goal_achievements"]["Row"]>;
         Relationships: [];
       };
+      skills: {
+        Row: {
+          id: string; user_id: string; name: string; icon: string; color: string;
+          sort_order: number; created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["skills"]["Row"]> & { user_id: string; name: string };
+        Update: Partial<Database["public"]["Tables"]["skills"]["Row"]>;
+        Relationships: [];
+      };
+      activities: {
+        Row: {
+          id: string; user_id: string; name: string; category_id: string | null;
+          description: string; icon: string; color: string; status: ActivityStatus;
+          kind: ActivityKind; start_date: string; end_date: string | null;
+          planned_minutes: number; usual_time: string | null; place: string;
+          organizer: string; url: string | null; goal_type: ActivityGoalType | null;
+          goal_target: number | null; sort_order: number;
+          schedule_refreshed_until: string | null; created_at: string; updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["activities"]["Row"]> & { user_id: string; name: string };
+        Update: Partial<Database["public"]["Tables"]["activities"]["Row"]>;
+        Relationships: [];
+      };
+      activity_recurrence_rules: {
+        Row: {
+          id: string; activity_id: string; user_id: string; valid_from: string;
+          valid_until: string | null; anchor_date: string | null;
+          frequency: ActivityFrequency; week_interval: number;
+          weekdays: number[]; times_per_week: number | null; interval_days: number;
+          start_time: string | null; planned_minutes: number | null; created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["activity_recurrence_rules"]["Row"]> & {
+          activity_id: string; user_id: string; valid_from: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["activity_recurrence_rules"]["Row"]>;
+        Relationships: [];
+      };
+      activity_sessions: {
+        Row: {
+          id: string; activity_id: string; user_id: string; recurrence_rule_id: string | null;
+          source: "manual" | "generated"; occurrence_date: string | null;
+          session_date: string; start_time: string | null; planned_minutes: number;
+          actual_minutes: number | null; status: ActivitySessionStatus;
+          feedback_score: number | null; notes: string; comment: string;
+          url: string | null; attachment_path: string | null; attachment_name: string | null;
+          skill_snapshot_complete: boolean; is_exception: boolean;
+          sort_order: number; created_at: string; updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["activity_sessions"]["Row"]> & {
+          activity_id: string; user_id: string; session_date: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["activity_sessions"]["Row"]>;
+        Relationships: [];
+      };
+      activity_suppressed_occurrences: {
+        Row: { activity_id: string; user_id: string; occurrence_date: string; created_at: string };
+        Insert: { activity_id: string; user_id: string; occurrence_date: string; created_at?: string };
+        Update: Partial<Database["public"]["Tables"]["activity_suppressed_occurrences"]["Row"]>;
+        Relationships: [];
+      };
+      activity_skill_links: {
+        Row: { activity_id: string; skill_id: string; user_id: string };
+        Insert: { activity_id: string; skill_id: string; user_id: string };
+        Update: Partial<Database["public"]["Tables"]["activity_skill_links"]["Row"]>;
+        Relationships: [];
+      };
+      activity_program_links: {
+        Row: { activity_id: string; program_id: string; user_id: string };
+        Insert: { activity_id: string; program_id: string; user_id: string };
+        Update: Partial<Database["public"]["Tables"]["activity_program_links"]["Row"]>;
+        Relationships: [];
+      };
+      activity_session_skills: {
+        Row: { session_id: string; skill_id: string; user_id: string };
+        Insert: { session_id: string; skill_id: string; user_id: string };
+        Update: Partial<Database["public"]["Tables"]["activity_session_skills"]["Row"]>;
+        Relationships: [];
+      };
       habits: {
         Row: {
           id: string;
@@ -394,7 +477,45 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      nf_refresh_activity_occurrences: { Args: { p_activity_id: string; p_user_id?: string | null }; Returns: number };
+      nf_set_activity_recurrence: {
+        Args: {
+          p_activity_id: string; p_scope: "all" | "following"; p_from_date: string;
+          p_frequency: ActivityFrequency; p_week_interval?: number; p_weekdays?: number[];
+          p_times_per_week?: number | null; p_interval_days?: number;
+          p_start_time?: string | null; p_planned_minutes?: number | null;
+          p_anchor_date?: string | null; p_user_id?: string | null;
+        };
+        Returns: string;
+      };
+      nf_set_activity_links: { Args: { p_activity_id: string; p_skill_ids: string[]; p_program_ids: string[]; p_user_id?: string | null }; Returns: undefined };
+      nf_set_activity_session_skills: { Args: { p_session_id: string; p_skill_ids: string[]; p_user_id?: string | null }; Returns: undefined };
+      nf_reorder_activities: { Args: { p_order: string[]; p_user_id?: string | null }; Returns: undefined };
+      nf_duplicate_activity: { Args: { p_activity_id: string; p_user_id?: string | null }; Returns: string };
+      nf_delete_activity_session: { Args: { p_session_id: string; p_user_id?: string | null }; Returns: undefined };
+      nf_move_activity_session: {
+        Args: { p_session_id: string; p_target_activity_id: string; p_date: string; p_time?: string | null; p_user_id?: string | null };
+        Returns: undefined;
+      };
+      nf_restore_activity_occurrence: { Args: { p_activity_id: string; p_occurrence_date: string; p_user_id?: string | null }; Returns: undefined };
+      nf_clear_activity_recurrence: { Args: { p_activity_id: string; p_user_id?: string | null }; Returns: undefined };
+      nf_batch_move_activity_sessions: {
+        Args: { p_session_ids: string[]; p_target_activity_id: string; p_date?: string | null; p_user_id?: string | null };
+        Returns: undefined;
+      };
+      nf_batch_delete_activity_sessions: { Args: { p_session_ids: string[]; p_user_id?: string | null }; Returns: undefined };
+      nf_batch_duplicate_activity_sessions: {
+        Args: { p_session_ids: string[]; p_target_activity_id: string; p_date?: string | null; p_user_id?: string | null };
+        Returns: string[];
+      };
+      nf_reorder_activity_sessions: { Args: { p_date: string; p_order: string[]; p_user_id?: string | null }; Returns: undefined };
+      nf_reorder_skills: { Args: { p_order: string[]; p_user_id?: string | null }; Returns: undefined };
+      nf_batch_set_activity_session_status: {
+        Args: { p_session_ids: string[]; p_status: ActivitySessionStatus; p_user_id?: string | null };
+        Returns: undefined;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

@@ -90,6 +90,27 @@ export async function ownedCategory({ supabase, userId }: ToolContext, categoryI
   return data ?? notFound(`Category ${categoryId}`);
 }
 
+export async function ownedActivity({ supabase, userId }: ToolContext, activityId: string) {
+  const { data, error } = await supabase.from("activities").select("*")
+    .eq("id", activityId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data ?? notFound(`Activity ${activityId}`);
+}
+
+export async function ownedActivitySession({ supabase, userId }: ToolContext, sessionId: string) {
+  const { data, error } = await supabase.from("activity_sessions").select("*")
+    .eq("id", sessionId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data ?? notFound(`Activity session ${sessionId}`);
+}
+
+export async function ownedSkill({ supabase, userId }: ToolContext, skillId: string) {
+  const { data, error } = await supabase.from("skills").select("*")
+    .eq("id", skillId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data ?? notFound(`Skill ${skillId}`);
+}
+
 /** `undefined` = leave unchanged, `null` = clear, a uuid = must be one of the user's categories. */
 export async function resolveCategoryId(ctx: ToolContext, categoryId: string | null | undefined) {
   if (categoryId === undefined || categoryId === null) return categoryId;

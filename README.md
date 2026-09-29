@@ -1,7 +1,7 @@
 # NovaFormation — serveur MCP
 
-Serveur MCP distant de **NovaFormation** (programmes de formation, livres, exercices,
-objectifs, XP). Il donne à un client MCP un accès complet en **lecture et écriture**
+Serveur MCP distant de **NovaFormation** (programmes de formation, exercices,
+activités réelles, livres, objectifs, XP). Il donne à un client MCP un accès complet en **lecture et écriture**
 aux données de l'application, avec les mêmes règles que l'interface.
 
 - Lit et écrit directement la base Supabase de l'application (clé `service_role`),
@@ -21,6 +21,10 @@ aux données de l'application, avec les mêmes règles que l'interface.
 | Programmes | `list_programs`, `get_program`, `create_program` (structure complète en un appel), `update_program`, `delete_program`, `add_weeks`, `update_week`, `delete_week`, `add_modules`, `update_module`, `delete_module`, `add_module_items`, `update_module_item`, `set_module_items_completed`, `reorder_module_items`, `delete_module_items` |
 | Livres | `list_books`, `get_book`, `create_book`, `update_book`, `update_book_progress`, `delete_book` |
 | Exercices | `list_exercises`, `get_exercise`, `create_exercise`, `update_exercise`, `list_exercise_sessions`, `log_exercise_session`, `update_exercise_session`, `delete_exercise_session` |
+| Activités | `list_activities`, `get_activity`, `search_activities`, `create_activity`, `update_activity`, `archive_activity`, `duplicate_activity`, `reorder_activities`, `delete_activity`, `set_activity_recurrence`, `set_activity_links`, `restore_activity_occurrence` |
+| Séances d’activité | `list_activity_sessions`, `add_activity_session`, `update_activity_session`, `update_activity_session_schedule`, `set_activity_session_status`, `set_activity_sessions_status`, `move_activity_sessions`, `duplicate_activity_sessions`, `delete_activity_sessions`, `reorder_activity_sessions`, `set_activity_session_skills` |
+| Compétences et fichiers | `list_activity_skills`, `create_activity_skill`, `update_activity_skill`, `duplicate_activity_skill`, `reorder_activity_skills`, `delete_activity_skill`, `read_activity_attachment`, `upload_activity_attachment`, `remove_activity_attachment` |
+| Statistiques d’activité | `get_activity_statistics` (filtres par activité, catégorie, compétence, programme et période) |
 | Objectifs | `add_exercise_objectives`, `set_exercise_objectives`, `update_exercise_objective`, `delete_exercise_objective`, `list_milestones` |
 | Réglages | `get_settings`, `update_settings`, `update_profile`, `list_categories`, `create_category`, `update_category`, `merge_categories`, `delete_category` |
 
@@ -60,6 +64,15 @@ d'objectifs répondent `unavailable` et le reste fonctionne). La migration
 `0007_reconcile_exercise_goals.sql` répare les jalons historiques manquants et
 enregistre les nouveaux franchissements directement en base. Le MCP les lit
 après la création d'une session et calcule les périodes selon Europe/Paris.
+`0008_activities.sql` crée les entités dédiées aux activités, séances,
+récurrences versionnées, compétences, liens et fichiers privés. Les fonctions SQL
+recalculent les occurrences futures sans modifier les séances déjà réalisées ni
+les exceptions déplacées par l’utilisateur. Une suppression ponctuelle d’une
+occurrence est mémorisée pour qu’elle ne réapparaisse pas lors du recalcul.
+Le taux de présence exclut les annulations par l’organisateur et les reports.
+Les pièces jointes MCP sont échangées en base64, sans URL avec jeton.
+Les compétences travaillées sont figées sur chaque séance réalisée pour
+conserver des statistiques historiques cohérentes si les liens de l’activité changent.
 
 ## Développement
 

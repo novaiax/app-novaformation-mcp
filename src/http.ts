@@ -10,7 +10,8 @@ export const SSE_PATH = "/sse";
 export const MESSAGES_PATH = "/messages";
 export const STREAMABLE_PATH = "/mcp";
 
-const MAX_BODY_BYTES = 4 * 1024 * 1024;
+// Base64-encoded private activity attachments may be up to 10 MB.
+const MAX_BODY_BYTES = 15 * 1024 * 1024;
 
 function sendJson(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   if (res.headersSent) return;

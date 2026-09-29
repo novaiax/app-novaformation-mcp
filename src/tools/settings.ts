@@ -5,7 +5,7 @@ import { badRequest } from "./result.js";
 import { getSettings } from "../services/settings.js";
 
 // Every table with a category_id — merging categories must reassign all of them (same list as the app).
-const CATEGORY_REFERENCING_TABLES = ["books", "exercises", "habits", "tasks", "task_templates"] as const;
+const CATEGORY_REFERENCING_TABLES = ["books", "exercises", "activities", "habits", "tasks", "task_templates"] as const;
 
 export const settingsTools = [
   defineTool({
