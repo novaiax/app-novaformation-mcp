@@ -18,6 +18,17 @@ export async function recordGoalAchievements(
   exerciseId: string,
   logId: string,
 ): Promise<Tables<"exercise_goal_achievements">[]> {
+  // Migration 0007 inserts crossings in the same transaction as the log.
+  // Read those rows first so MCP callers receive the reached objectives.
+  const { data: recorded, error: recordedError } = await supabase
+    .from("exercise_goal_achievements")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("exercise_id", exerciseId)
+    .eq("log_id", logId);
+  if (recordedError && !isMissingTableError(recordedError)) throw recordedError;
+  if (recorded?.length) return recorded;
+
   const { data: goals, error: goalsError } = await supabase
     .from("exercise_goals")
     .select("id, type, target, period, deadline")

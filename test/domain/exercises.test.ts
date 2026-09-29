@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeExerciseGoalProgress,
   detectGoalCrossings,
+  exerciseGoalPeriodKey,
   getExerciseStats,
   groupExerciseStats,
   normalizeExerciseGoalDrafts,
@@ -116,6 +117,27 @@ describe("computeExerciseGoalProgress", () => {
 
   it("reports days left until the deadline", () => {
     expect(computeExerciseGoalProgress(goal({ deadline: "2026-09-30" }), [], reference).daysLeft).toBe(14);
+  });
+});
+
+describe("exerciseGoalPeriodKey", () => {
+  it("uses Paris dates at midnight rather than the server timezone", () => {
+    const mondayInParis = new Date("2026-09-27T22:30:00Z");
+    expect(exerciseGoalPeriodKey("week", mondayInParis, 1)).toBe("2026-09-28");
+    expect(exerciseGoalPeriodKey("week", mondayInParis, 0)).toBe("2026-09-27");
+    expect(exerciseGoalPeriodKey("month", new Date("2026-09-30T22:30:00Z"))).toBe("2026-10-01");
+  });
+
+  it("does not count a future session in the current weekly progress", () => {
+    const result = computeExerciseGoalProgress(
+      { id: "w", type: "sessions", target: 2, period: "week", deadline: null },
+      [
+        { duration_minutes: 20, score: null, completed_at: "2026-09-28T10:00:00Z" },
+        { duration_minutes: 20, score: null, completed_at: "2026-10-05T10:00:00Z" },
+      ],
+      new Date("2026-09-29T10:00:00Z"),
+    );
+    expect(result).toMatchObject({ current: 1, reached: false, periodKey: "2026-09-28" });
   });
 });
 

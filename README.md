@@ -56,7 +56,10 @@ Avec `MCP_AUTH_TOKEN`, le client fournit le jeton par l'en-tête
 
 La base doit avoir les migrations de l'application appliquées, dont
 `0004_exercise_goals.sql` pour les objectifs et milestones (sans elle, les outils
-d'objectifs répondent `unavailable` et le reste fonctionne).
+d'objectifs répondent `unavailable` et le reste fonctionne). La migration
+`0007_reconcile_exercise_goals.sql` répare les jalons historiques manquants et
+enregistre les nouveaux franchissements directement en base. Le MCP les lit
+après la création d'une session et calcule les périodes selon Europe/Paris.
 
 ## Développement
 

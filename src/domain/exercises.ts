@@ -1,6 +1,5 @@
 // Ported from the NovaFormation app (src/lib/exercises.ts) — keep both in sync.
-import { differenceInCalendarDays, parseISO, startOfMonth, startOfWeek } from "date-fns";
-import { toDateKey } from "./date.js";
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import type { ExerciseGoalPeriod, ExerciseGoalType } from "./database.js";
 
 export interface ExerciseLogStatsInput {
@@ -73,6 +72,30 @@ export type ExerciseGoalStatus = "in_progress" | "near" | "reached";
 
 export const NEAR_GOAL_RATIO = 0.8;
 
+const PARIS_DATE = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+});
+
+function parisDateKey(date: Date): string {
+  const parts = Object.fromEntries(PARIS_DATE.formatToParts(date).map((part) => [part.type, part.value]));
+  return parts.year + "-" + parts.month + "-" + parts.day;
+}
+
+/** Stable week/month key across the MCP, browser and PostgreSQL. */
+export function exerciseGoalPeriodKey(
+  period: ExerciseGoalPeriod,
+  date: Date,
+  weekStartsOn: 0 | 1 = 1,
+): string {
+  if (period === "total") return "total";
+  const dateKey = parisDateKey(date);
+  if (period === "month") return dateKey.slice(0, 7) + "-01";
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCDate(utc.getUTCDate() - (utc.getUTCDay() - weekStartsOn + 7) % 7);
+  return utc.toISOString().slice(0, 10);
+}
+
 export interface ExerciseGoalProgress extends ExerciseGoalInput {
   /** First day counted (yyyy-MM-dd), null for an all-time objective. */
   periodStart: string | null;
@@ -107,15 +130,13 @@ export function computeExerciseGoalProgress(
   weekStartsOn: 0 | 1 = 1,
 ): ExerciseGoalProgress {
   const target = toNumberOrNull(goal.target) ?? 0;
-  const periodStartDate =
-    goal.period === "week"
-      ? startOfWeek(referenceDate, { weekStartsOn })
-      : goal.period === "month"
-        ? startOfMonth(referenceDate)
-        : null;
-
-  const inPeriod = periodStartDate
-    ? logs.filter((log) => new Date(log.completed_at) >= periodStartDate)
+  const periodStart = goal.period === "total" ? null : exerciseGoalPeriodKey(goal.period, referenceDate, weekStartsOn);
+  const referenceKey = parisDateKey(referenceDate);
+  const inPeriod = periodStart
+    ? logs.filter((log) => {
+      const dateKey = parisDateKey(new Date(log.completed_at));
+      return dateKey >= periodStart && dateKey <= referenceKey;
+    })
     : logs;
 
   let current: number;
@@ -133,7 +154,6 @@ export function computeExerciseGoalProgress(
       scores.length > 0 ? Math.round((scores.reduce((sum, s) => sum + s, 0) / scores.length) * 10) / 10 : 0;
   }
 
-  const periodStart = periodStartDate ? toDateKey(periodStartDate) : null;
   const progress = target > 0 ? Math.min(1, current / target) : 0;
   const reached = sampleSize > 0 && current >= target;
 
@@ -151,7 +171,7 @@ export function computeExerciseGoalProgress(
     reached,
     status: reached ? "reached" : progress >= NEAR_GOAL_RATIO ? "near" : "in_progress",
     sampleSize,
-    daysLeft: goal.deadline ? differenceInCalendarDays(parseISO(goal.deadline), referenceDate) : null,
+    daysLeft: goal.deadline ? differenceInCalendarDays(parseISO(goal.deadline), parseISO(referenceKey)) : null,
   };
 }
 
