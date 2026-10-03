@@ -7,12 +7,12 @@ import { overviewTools } from "./tools/overview.js";
 import { programTools } from "./tools/programs.js";
 import { settingsTools } from "./tools/settings.js";
 import { activityTools, activitySessionTools, activityStatisticsTools, activitySkillTools } from "./tools/activities.js";
-import { connectionTools, getEntityConnections } from "./tools/connections.js";
+import { connectionTools, getEntityConnections, getProgramItemConnections } from "./tools/connections.js";
 import type { ConnectionEntityType } from "./domain/database.js";
 import { toolErrorResult, toolResult } from "./tools/result.js";
 
 export const SERVER_NAME = "novaformation";
-export const SERVER_VERSION = "1.3.0";
+export const SERVER_VERSION = "1.3.1";
 
 const connectionDetails: Record<string, { type: ConnectionEntityType; idKey: string }> = {
   get_program: { type: "program", idKey: "program_id" },
@@ -26,11 +26,22 @@ function withConnections(tool: McpTool): McpTool {
   if (!source) return tool;
   return {
     ...tool,
-    description: `${tool.description} Inclut connections, les éléments liés des autres sections.`,
+    description: `${tool.description} Inclut connections, les éléments liés des autres sections.${source.type === "program" ? " Chaque weeks[].modules[].items[] inclut aussi ses propres connections." : ""}`,
     handler: async (args, ctx) => {
       const detail = await tool.handler(args, ctx);
       const connections = await getEntityConnections(ctx, source.type, args[source.idKey] as string);
-      return { ...(detail as Record<string, unknown>), connections };
+      const record = detail as Record<string, unknown>;
+      if (source.type !== "program") return { ...record, connections };
+      const itemConnections = await getProgramItemConnections(ctx, args[source.idKey] as string);
+      type ModuleDetail = Record<string, unknown> & { items: (Record<string, unknown> & { id: string })[] };
+      type WeekDetail = Record<string, unknown> & { modules: ModuleDetail[] };
+      return { ...record, connections,
+        weeks: (record.weeks as WeekDetail[]).map((week) => ({ ...week,
+          modules: week.modules.map((module) => ({ ...module,
+            items: module.items.map((item) => ({ ...item, connections: itemConnections[item.id] ?? [] })),
+          })),
+        })),
+      };
     },
   };
 }
@@ -51,13 +62,16 @@ export const ALL_TOOLS: McpTool[] = [
 const INSTRUCTIONS = `Acces complet (lecture et ecriture) a NovaFormation, l'app de progression personnelle de l'utilisateur :
 programmes de formation (semaines > modules > elements), exercices deliberes, activites reelles
 (seances, recurrence, exceptions, competences et programmes lies), livres, objectifs, XP et statistiques.
-Les programmes, livres, exercices et activites peuvent etre connectes entre sections sans duplication.
+Les programmes, livres, exercices, activites et elements des semaines (entity_type=item) peuvent etre connectes sans duplication.
 
 Reperes :
 - Commencer par get_overview ; search retrouve un element par son texte et renvoie les ids.
 - search_connection_targets trouve les elements a relier ; connect_entities et disconnect_entities gerent
   des liens bidirectionnels en lot. list_entity_connections et les get_* les affichent avec direct/in_planning.
-  Deconnecter est reversible et ne supprime pas un livre ou exercice deja inscrit dans un planning.
+  get_program inclut aussi connections sur chaque weeks[].modules[].items[]. Les cibles item ont leur contexte
+  program_id, week_id, week_number, module_id ; deux items distincts peuvent etre connectes entre eux.
+  Deconnecter est reversible et ne supprime aucun element. Un lien agrege programme/ressource inscrit au planning
+  reste visible ; deconnecter directement un item de sa ressource retire sa reference sans supprimer l'item.
 - Les ecritures suivent exactement les regles de l'app : XP accordee une seule fois (element coche, session, livre termine),
   retiree quand on annule ; objectifs d'exercice franchis enregistres une seule fois.
 - Les scores d'exercice sont sur l'echelle de l'exercice (score_max : 5, 10, 20, 100...).

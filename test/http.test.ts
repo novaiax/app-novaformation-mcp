@@ -8,6 +8,7 @@ import { loadConfig } from "../src/config.js";
 import { createContextProvider } from "../src/context.js";
 import { createHttpServer } from "../src/http.js";
 import { ALL_TOOLS, createMcpServer } from "../src/server.js";
+import { z } from "zod";
 
 const TOKEN = "test-token-123";
 let server: Server;
@@ -128,6 +129,15 @@ describe("tool catalogue", () => {
       expect(names.has(name), name).toBe(true);
     }
     expect(ALL_TOOLS.find((tool) => tool.name === "disconnect_entities")?.kind).toBe("write");
+  });
+
+  it("accepts planning items as sources and targets through the published tool schemas", () => {
+    const tool = ALL_TOOLS.find((row) => row.name === "connect_entities")!;
+    expect(z.object(tool.input).parse({ entity_type: "item",
+      entity_id: "88888888-8888-4888-8888-888888888888",
+      targets: [{ type: "item", id: "99999999-9999-4999-8999-999999999999" }],
+    })).toMatchObject({ entity_type: "item", targets: [{ type: "item" }] });
+    expect(ALL_TOOLS.find((row) => row.name === "get_program")?.description).toContain("weeks[].modules[].items[]");
   });
 
   it("never exposes the hidden Today and Habits sections", () => {

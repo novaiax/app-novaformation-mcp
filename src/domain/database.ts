@@ -20,7 +20,7 @@ export type ActivityKind = "recurring" | "one_off" | "free";
 export type ActivityGoalType = "sessions" | "hours" | "attendance";
 export type ActivitySessionStatus = "planned" | "done" | "missed" | "cancelled_self" | "cancelled_organizer" | "postponed";
 export type ActivityFrequency = "weekly" | "every_n_days";
-export type ConnectionEntityType = "program" | "book" | "exercise" | "activity";
+export type ConnectionEntityType = "program" | "book" | "exercise" | "activity" | "item";
 
 export interface ConnectionRef {
   type: ConnectionEntityType;
@@ -35,6 +35,10 @@ export interface ConnectionTarget extends ConnectionRef {
   status: string;
   direct: boolean;
   in_planning: boolean;
+  program_id: string | null;
+  week_id: string | null;
+  week_number: number | null;
+  module_id: string | null;
 }
 
 export interface HabitRecurrenceConfig {
@@ -511,11 +515,17 @@ export interface Database {
         Row: {
           type: ConnectionEntityType; id: string; user_id: string; title: string;
           subtitle: string; icon: string; color: string; status: string;
+          program_id: string | null; week_id: string | null;
+          week_number: number | null; module_id: string | null;
         };
         Relationships: [];
       };
     };
     Functions: {
+      nf_get_program_item_connections: {
+        Args: { p_program_id: string; p_user_id?: string | null };
+        Returns: Record<string, ConnectionTarget[]>;
+      };
       nf_get_entity_connections: {
         Args: { p_entity_type: ConnectionEntityType; p_entity_id: string; p_user_id?: string | null };
         Returns: ConnectionTarget[];

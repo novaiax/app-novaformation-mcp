@@ -98,6 +98,22 @@ visibles depuis les deux fiches. Les quatre outils `get_program`, `get_book`,
 éléments liés, sans copie des données. La recherche est paginée, filtrable par
 section et limitée au nom de l’élément.
 
+La migration `0013_planning_item_connections.sql` étend ce même système aux
+éléments des semaines : `entity_type: "item"` désigne un `module_items`, quelle
+que soit sa nature (cours, livre, exercice, objectif ou tâche). Un item peut être
+relié aux quatre sections et à d’autres items distincts, sans se connecter à lui-même.
+Les éléments liés et les résultats de recherche incluent leur contexte
+`program_id`, `week_id`, `week_number`, `module_id`, ainsi qu’un sous-titre
+programme / semaine / module. La recherche accepte `entity_id` avec `entity_type`
+pour vérifier la source et exclure l’item source. `get_program` ajoute `connections`
+à chaque `weeks[].modules[].items[]`, récupérées en un seul appel SQL pour le programme.
+Les contrôles de compte remontent de l’item à son module, sa semaine et son programme.
+Les anciennes références `ref_book_id` / `ref_exercise_id` apparaissent comme des
+connexions d’item (`direct: true`, `in_planning: true`). Déconnecter l’item de cette
+ressource, depuis l’une ou l’autre fiche, retire aussi cette référence sans supprimer
+l’item. Les liens programme / ressource agrégés à partir du planning restent visibles
+tant qu’un item les établit.
+
 ## Développement
 
 ```bash
