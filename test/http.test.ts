@@ -122,6 +122,14 @@ describe("tool catalogue", () => {
     }
   });
 
+  it("exposes cross-section connections as reversible writes", () => {
+    const names = new Set(ALL_TOOLS.map((tool) => tool.name));
+    for (const name of ["list_entity_connections", "search_connection_targets", "connect_entities", "disconnect_entities"]) {
+      expect(names.has(name), name).toBe(true);
+    }
+    expect(ALL_TOOLS.find((tool) => tool.name === "disconnect_entities")?.kind).toBe("write");
+  });
+
   it("never exposes the hidden Today and Habits sections", () => {
     expect(ALL_TOOLS.some((t) => /habit|today|task_template/i.test(t.name))).toBe(false);
   });

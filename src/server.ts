@@ -7,10 +7,33 @@ import { overviewTools } from "./tools/overview.js";
 import { programTools } from "./tools/programs.js";
 import { settingsTools } from "./tools/settings.js";
 import { activityTools, activitySessionTools, activityStatisticsTools, activitySkillTools } from "./tools/activities.js";
+import { connectionTools, getEntityConnections } from "./tools/connections.js";
+import type { ConnectionEntityType } from "./domain/database.js";
 import { toolErrorResult, toolResult } from "./tools/result.js";
 
 export const SERVER_NAME = "novaformation";
-export const SERVER_VERSION = "1.2.1";
+export const SERVER_VERSION = "1.3.0";
+
+const connectionDetails: Record<string, { type: ConnectionEntityType; idKey: string }> = {
+  get_program: { type: "program", idKey: "program_id" },
+  get_book: { type: "book", idKey: "book_id" },
+  get_exercise: { type: "exercise", idKey: "exercise_id" },
+  get_activity: { type: "activity", idKey: "activity_id" },
+};
+
+function withConnections(tool: McpTool): McpTool {
+  const source = connectionDetails[tool.name];
+  if (!source) return tool;
+  return {
+    ...tool,
+    description: `${tool.description} Inclut connections, les éléments liés des autres sections.`,
+    handler: async (args, ctx) => {
+      const detail = await tool.handler(args, ctx);
+      const connections = await getEntityConnections(ctx, source.type, args[source.idKey] as string);
+      return { ...(detail as Record<string, unknown>), connections };
+    },
+  };
+}
 
 export const ALL_TOOLS: McpTool[] = [
   ...overviewTools,
@@ -21,15 +44,20 @@ export const ALL_TOOLS: McpTool[] = [
   ...activitySessionTools,
   ...activityStatisticsTools,
   ...activitySkillTools,
+  ...connectionTools,
   ...settingsTools,
-];
+].map(withConnections);
 
 const INSTRUCTIONS = `Acces complet (lecture et ecriture) a NovaFormation, l'app de progression personnelle de l'utilisateur :
 programmes de formation (semaines > modules > elements), exercices deliberes, activites reelles
 (seances, recurrence, exceptions, competences et programmes lies), livres, objectifs, XP et statistiques.
+Les programmes, livres, exercices et activites peuvent etre connectes entre sections sans duplication.
 
 Reperes :
 - Commencer par get_overview ; search retrouve un element par son texte et renvoie les ids.
+- search_connection_targets trouve les elements a relier ; connect_entities et disconnect_entities gerent
+  des liens bidirectionnels en lot. list_entity_connections et les get_* les affichent avec direct/in_planning.
+  Deconnecter est reversible et ne supprime pas un livre ou exercice deja inscrit dans un planning.
 - Les ecritures suivent exactement les regles de l'app : XP accordee une seule fois (element coche, session, livre termine),
   retiree quand on annule ; objectifs d'exercice franchis enregistres une seule fois.
 - Les scores d'exercice sont sur l'echelle de l'exercice (score_max : 5, 10, 20, 100...).

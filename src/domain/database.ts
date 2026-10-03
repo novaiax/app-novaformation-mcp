@@ -20,6 +20,22 @@ export type ActivityKind = "recurring" | "one_off" | "free";
 export type ActivityGoalType = "sessions" | "hours" | "attendance";
 export type ActivitySessionStatus = "planned" | "done" | "missed" | "cancelled_self" | "cancelled_organizer" | "postponed";
 export type ActivityFrequency = "weekly" | "every_n_days";
+export type ConnectionEntityType = "program" | "book" | "exercise" | "activity";
+
+export interface ConnectionRef {
+  type: ConnectionEntityType;
+  id: string;
+}
+
+export interface ConnectionTarget extends ConnectionRef {
+  title: string;
+  subtitle: string;
+  icon: string;
+  color: string;
+  status: string;
+  direct: boolean;
+  in_planning: boolean;
+}
 
 export interface HabitRecurrenceConfig {
   days_of_week?: number[]; // 0 (Sunday) - 6 (Saturday)
@@ -348,6 +364,18 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["activity_program_links"]["Row"]>;
         Relationships: [];
       };
+      entity_connections: {
+        Row: {
+          user_id: string; type_a: ConnectionEntityType; id_a: string;
+          type_b: ConnectionEntityType; id_b: string; created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["entity_connections"]["Row"]> & {
+          user_id: string; type_a: ConnectionEntityType; id_a: string;
+          type_b: ConnectionEntityType; id_b: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["entity_connections"]["Row"]>;
+        Relationships: [];
+      };
       activity_session_skills: {
         Row: { session_id: string; skill_id: string; user_id: string };
         Insert: { session_id: string; skill_id: string; user_id: string };
@@ -478,8 +506,27 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      nf_connection_catalog: {
+        Row: {
+          type: ConnectionEntityType; id: string; user_id: string; title: string;
+          subtitle: string; icon: string; color: string; status: string;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
+      nf_get_entity_connections: {
+        Args: { p_entity_type: ConnectionEntityType; p_entity_id: string; p_user_id?: string | null };
+        Returns: ConnectionTarget[];
+      };
+      nf_change_entity_connections: {
+        Args: {
+          p_entity_type: ConnectionEntityType; p_entity_id: string;
+          p_targets: ConnectionRef[]; p_connect?: boolean; p_user_id?: string | null;
+        };
+        Returns: ConnectionTarget[];
+      };
       nf_refresh_activity_occurrences: { Args: { p_activity_id: string; p_user_id?: string | null }; Returns: number };
       nf_set_one_off_event_days: {
         Args: { p_activity_id: string; p_days: {

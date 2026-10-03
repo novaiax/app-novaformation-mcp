@@ -25,6 +25,7 @@ aux données de l'application, avec les mêmes règles que l'interface.
 | Séances d’activité | `list_activity_sessions`, `add_activity_session`, `update_activity_session`, `update_activity_session_schedule`, `set_activity_session_status`, `set_activity_sessions_status`, `move_activity_sessions`, `duplicate_activity_sessions`, `delete_activity_sessions`, `reorder_activity_sessions`, `set_activity_session_skills` |
 | Compétences et fichiers | `list_activity_skills`, `create_activity_skill`, `update_activity_skill`, `duplicate_activity_skill`, `reorder_activity_skills`, `delete_activity_skill`, `read_activity_attachment`, `upload_activity_attachment`, `remove_activity_attachment` |
 | Statistiques d’activité | `get_activity_statistics` (filtres par activité, catégorie, compétence, programme et période) |
+| Connexions entre sections | `search_connection_targets`, `list_entity_connections`, `connect_entities`, `disconnect_entities` |
 | Objectifs | `add_exercise_objectives`, `set_exercise_objectives`, `update_exercise_objective`, `delete_exercise_objective`, `list_milestones` |
 | Réglages | `get_settings`, `update_settings`, `update_profile`, `list_categories`, `create_category`, `update_category`, `merge_categories`, `delete_category` |
 
@@ -83,6 +84,19 @@ plage horaire ou durée. Les journées entières occupent le calendrier sans
 La migration `0011_exercise_session_cleanup.sql` supprime les XP liés à une
 séance d’exercice dans la même transaction que sa suppression. Le jalon déjà
 atteint reste historique et la progression courante est recalculée.
+La migration `0012_entity_connections.sql` généralise les connexions bidirectionnelles
+entre programmes, livres, exercices et activités. `connect_entities` et
+`disconnect_entities` prennent une source (`entity_type`, `entity_id`) et jusqu’à
+100 cibles `{type, id}`. Ces opérations sont atomiques, idempotentes et limitées au
+compte pour la source comme pour chaque cible. Déconnecter retire un lien explicite
+et ne supprime aucune donnée : l’opération ne demande donc pas `confirm`.
+Les références de livres et exercices présentes dans les plannings apparaissent
+avec `in_planning: true`, et restent visibles après déconnexion du lien explicite.
+Les liens Activité–Programme existants gardent leur stockage canonique et sont
+visibles depuis les deux fiches. Les quatre outils `get_program`, `get_book`,
+`get_exercise`, `get_activity` incluent `connections`, avec les titres actuels des
+éléments liés, sans copie des données. La recherche est paginée, filtrable par
+section et limitée au nom de l’élément.
 
 ## Développement
 
