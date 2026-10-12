@@ -12,7 +12,7 @@ import type { ConnectionEntityType } from "./domain/database.js";
 import { toolErrorResult, toolResult } from "./tools/result.js";
 
 export const SERVER_NAME = "novaformation";
-export const SERVER_VERSION = "1.3.1";
+export const SERVER_VERSION = "1.3.2";
 
 const connectionDetails: Record<string, { type: ConnectionEntityType; idKey: string }> = {
   get_program: { type: "program", idKey: "program_id" },

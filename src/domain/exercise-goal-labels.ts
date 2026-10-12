@@ -51,12 +51,13 @@ export function formatGoalTarget(type: ExerciseGoalType, target: number, scoreMa
   return formatGoalValue(type, rounded, scoreMax);
 }
 
-/** What is still missing: "Plus que 45 min (…)", "Plus que 3 sessions", "Plus que 0.4 point". */
+/** What is still missing: "45 min de pratique restantes", "3 sessions restantes", "0.4 point de moyenne à gagner". */
 export function describeRemaining(type: ExerciseGoalType, remaining: number): string {
   const rounded = Math.round(remaining * 10) / 10;
   if (type === "minutes") {
-    return rounded >= 60 ? `Plus que ${formatDuration(rounded)}` : `Plus que ${rounded} min`;
+    const duration = rounded >= 60 ? formatDuration(rounded) : `${rounded} min`;
+    return `${duration} de pratique restante${rounded === 1 || rounded === 60 ? "" : "s"}`;
   }
-  if (type === "sessions") return `Plus que ${plural(rounded, "session")}`;
-  return `Plus que ${rounded} point${rounded > 1 ? "s" : ""}`;
+  if (type === "sessions") return `${plural(rounded, "session")} restante${rounded > 1 ? "s" : ""}`;
+  return `${rounded} point${rounded > 1 ? "s" : ""} de moyenne à gagner`;
 }

@@ -27,13 +27,17 @@ describe("formatGoalValue", () => {
 
 describe("describeRemaining", () => {
   it("expresses long durations in hours", () => {
-    expect(describeRemaining("minutes", 45)).toBe("Plus que 45 min");
-    expect(describeRemaining("minutes", 125)).toBe("Plus que 2 h 5 min");
+    expect(describeRemaining("minutes", 45)).toBe("45 min de pratique restantes");
+    expect(describeRemaining("minutes", 125)).toBe("2 h 5 min de pratique restantes");
+    expect(describeRemaining("minutes", 1440)).toBe("24 h de pratique restantes");
+    expect(describeRemaining("minutes", 60)).toBe("1 h de pratique restante");
+    expect(describeRemaining("minutes", 1)).toBe("1 min de pratique restante");
   });
 
   it("pluralises sessions and points", () => {
-    expect(describeRemaining("sessions", 1)).toBe("Plus que 1 session");
-    expect(describeRemaining("score", 0.4)).toBe("Plus que 0.4 point");
-    expect(describeRemaining("score", 2)).toBe("Plus que 2 points");
+    expect(describeRemaining("sessions", 1)).toBe("1 session restante");
+    expect(describeRemaining("sessions", 3)).toBe("3 sessions restantes");
+    expect(describeRemaining("score", 0.4)).toBe("0.4 point de moyenne à gagner");
+    expect(describeRemaining("score", 2)).toBe("2 points de moyenne à gagner");
   });
 });
